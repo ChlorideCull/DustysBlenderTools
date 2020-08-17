@@ -119,6 +119,8 @@ def merge_textures_udim_style(materials: Dict[str, SimpleMaterialDefinition.Simp
             if tile_map[x][y] is not None:
                 normal_textures.append(materials[tile_map[x][y]].normalTexture)
     normal_texture = generate_udim_texture("GeneratedUDIMTexture_Normal", "//GeneratedUDIMTexture_Normal", normal_textures)
+    normal_texture.colorspace_settings.name = "Non-Color"
+    normal_texture.colorspace_settings.is_data = True
 
     return diffuse_texture, normal_texture
 
@@ -135,6 +137,7 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
             raise Exception("Only PNG textures are supported!")
 
     generated_image = bpy.data.images.new(name, textures[0].size[0], textures[0].size[1], alpha=True, tiled=True)
+    generated_image.tiles[0].label = textures[0].name
     for tile_id in range(1, len(textures)):
         generated_image.tiles.new(1001 + tile_id, label=textures[tile_id].name)
 
@@ -149,14 +152,6 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
     generated_image.filepath = bpy.path.relpath(os.path.join(folder_path, f"{name}.1001.png"))
     generated_image.reload()
     return generated_image
-
-
-def merge_textures_packed(materials: Dict[int, bpy.types.Material]):
-    # Packed style - for each island the textures are cut out with a margin, UVs are then packed without
-    # rotation or scaling, and textures are rendered into an image, producing an optimized texture set.
-    # + Texture space efficient
-    # - Complex
-    pass
 
 
 def main(target_materials: List[bpy.types.Material]):
