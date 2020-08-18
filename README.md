@@ -11,7 +11,6 @@ My personal "swiss army knife".
 
 * "Atlas selected into UDIMs"
     * Textures must be stored as PNGs (mostly due to laziness)
-    * All materials must have normals and diffuse image textures (mostly due to laziness, again)
     
 ## Future features
 

@@ -4,6 +4,7 @@ import math
 import shutil
 import os
 import logging
+import re
 from . import SimpleMaterialDefinition
 
 
@@ -68,7 +69,9 @@ def get_texture_set_for_material(mat: bpy.types.Material):
 
 
 def merge_textures_udim_style(materials: Dict[str, SimpleMaterialDefinition.SimpleMaterialDefinition],
-                              meshes: List[bpy.types.Mesh]):
+                              meshes: List[bpy.types.Mesh],
+                              fileprefix: str,
+                              directory: str):
     # UDIM style - each material gets placed on a grid, and UVs for each polygon gets offset to account for it.
     # + Simple, fast
     # - Waste of texture space since unused material space is left in
@@ -112,13 +115,13 @@ def merge_textures_udim_style(materials: Dict[str, SimpleMaterialDefinition.Simp
         for x in range(0, tile_max_x):
             if tile_map[x][y] is not None:
                 diffuse_textures.append(materials[tile_map[x][y]].diffuseTexture)
-    diffuse_texture = generate_udim_texture("GeneratedUDIMTexture_Diffuse", "//GeneratedUDIMTexture_Diffuse", diffuse_textures)
+    diffuse_texture = generate_udim_texture(f"{fileprefix}.Diffuse", directory, diffuse_textures)
     normal_textures = []
     for y in range(0, tile_max_y):
         for x in range(0, tile_max_x):
             if tile_map[x][y] is not None:
                 normal_textures.append(materials[tile_map[x][y]].normalTexture)
-    normal_texture = generate_udim_texture("GeneratedUDIMTexture_Normal", "//GeneratedUDIMTexture_Normal", normal_textures)
+    normal_texture = generate_udim_texture(f"{fileprefix}.Normal", directory, normal_textures)
     normal_texture.colorspace_settings.name = "Non-Color"
     normal_texture.colorspace_settings.is_data = True
 
@@ -128,7 +131,11 @@ def merge_textures_udim_style(materials: Dict[str, SimpleMaterialDefinition.Simp
 def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image]):
     if len(textures) == 1:
         raise Exception("No point in creating UDIMs with a single image, is there?")
+    if textures[0] is None:
+        raise Exception("I'm lazy and haven't bothered implementing support for the first texture being missing. Create some normal maps or something.")
     for texture in textures:
+        if texture is None:
+            continue
         if texture.is_dirty:
             raise Exception("Texture has unsaved changes, please save first.")
         if texture.filepath == "":
@@ -139,7 +146,10 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
     generated_image = bpy.data.images.new(name, textures[0].size[0], textures[0].size[1], alpha=True, tiled=True)
     generated_image.tiles[0].label = textures[0].name
     for tile_id in range(1, len(textures)):
-        generated_image.tiles.new(1001 + tile_id, label=textures[tile_id].name)
+        tile_label = tile_id
+        if textures[tile_id] is not None:
+            tile_label = textures[tile_id].name
+        generated_image.tiles.new(1001 + tile_id, label=tile_label)
 
     folder_path = bpy.path.abspath(path)
     try:
@@ -148,18 +158,29 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
         pass
 
     for tile_id in range(0, len(textures)):
-        shutil.copy(bpy.path.abspath(textures[tile_id].filepath), os.path.join(folder_path, f"{name}.{1001 + tile_id}.png"))
+        texture = textures[tile_id]
+        dest_path = os.path.join(folder_path, f"{name}.{1001 + tile_id}.png")
+        if texture is None:
+            with open(dest_path, mode="wb") as dest_file:
+                # Single pixel PNG with #7F7FFF - couldn't be bothered to include it as a file.
+                dest_file.write(b'\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x01'
+                                b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90\x77\x53\xde\x00\x00\x00\x0c\x49\x44\x41'
+                                b'\x54\x08\xd7\x63\xa8\xaf\xff\x0f\x00\x03\x7e\x01\xfe\x10\xb1\xfb\x65\x00\x00\x00'
+                                b'\x00\x49\x45\x4e\x44\xae\x42\x60\x82')
+        else:
+            shutil.copy(bpy.path.abspath(texture.filepath), dest_path)
     generated_image.filepath = bpy.path.relpath(os.path.join(folder_path, f"{name}.1001.png"))
     generated_image.reload()
     return generated_image
 
 
-def main(target_materials: List[bpy.types.Material]):
+def main(target_materials: List[bpy.types.Material], directory: str, fileprefix: str):
     material_definitions = {}
     for mat in target_materials:
         material_definitions[mat.name] = get_texture_set_for_material(mat)
 
-    diffuse_udim_texture, normal_udim_texture = merge_textures_udim_style(material_definitions, bpy.data.meshes)
+    diffuse_udim_texture, normal_udim_texture = merge_textures_udim_style(material_definitions, bpy.data.meshes,
+                                                                          fileprefix, directory)
     for mat in material_definitions.values():
         mat.diffuseTexture.user_remap(diffuse_udim_texture)
         mat.normalTexture.user_remap(normal_udim_texture)
@@ -171,6 +192,13 @@ class AtlasOperator(bpy.types.Operator):
     bl_label = "Atlas selected into UDIMs"         # Display name in the interface.
     bl_options = {'REGISTER', 'UNDO'}  # Enable undo for the operator.
 
+    directory: bpy.props.StringProperty(subtype="DIR_PATH")
+    filename: bpy.props.StringProperty(subtype="FILE_NAME")
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
     def execute(self, context):        # execute() is called when running the operator.
         material_ids = []
         selected_objects: List[bpy.types.Object] = context.selected_objects
@@ -180,5 +208,11 @@ class AtlasOperator(bpy.types.Operator):
                     material_ids.append(matslot.material.name)
         materials = [context.blend_data.materials[k] for k in material_ids]
 
-        main(materials)
+        filename_match = re.match(r"(\w+)\.\d+.\w+", self.filename)
+        if not filename_match:
+            self.report({'ERROR_INVALID_INPUT'}, f"Filename '{self.filename}' could not be used to generate a pattern, must be in the form of 'foo.1001.png'")
+            return {'CANCELLED'}
+        prefix = filename_match.group(1)
+
+        main(materials, self.directory, prefix)
         return {'FINISHED'}            # Lets Blender know the operator finished successfully.
