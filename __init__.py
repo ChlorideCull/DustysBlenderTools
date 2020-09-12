@@ -23,3 +23,11 @@ def unregister():
     bpy.utils.unregister_class(simplify_mats.SimplifyMaterialsOperator)
     bpy.utils.unregister_class(pack_single_udim_operator.PackUdimOperator)
     bpy.utils.unregister_class(pack_material_udims.AtlasUdimMaterialsOperator)
+
+
+def view3d_object_draw(self: bpy.types.Menu, context):
+    self.layout.operator("dusty.flatten_udims")
+    self.layout.operator("dusty.atlas")
+
+
+bpy.types.VIEW3D_MT_object.append(view3d_object_draw)
