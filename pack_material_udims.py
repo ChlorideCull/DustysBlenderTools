@@ -22,10 +22,10 @@ def map_uv(calc: PackCalculation, uv: List[float], tile_id: int):
     if tile_pack is None:
         raise NotifyUserException(f"Failed to find tile '{tile_id}'")
 
+    u_range = tile_pack.w / real_width
+    v_range = tile_pack.h / real_height
     u_start = tile_pack.fit.x / real_width
-    v_start = tile_pack.fit.y / real_height
-    u_range = tile_pack.fit.w / real_width
-    v_range = tile_pack.fit.h / real_height
+    v_start = 1 - (tile_pack.fit.y / real_height) - v_range
 
     return [u_start + (u_transformed * u_range), v_start + (v_transformed * v_range)]
 
