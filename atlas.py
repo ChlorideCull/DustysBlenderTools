@@ -6,6 +6,7 @@ import os
 import logging
 import re
 from . import SimpleMaterialDefinition
+from PIL import Image
 
 
 log = logging.getLogger("DustyAtlas")
@@ -140,8 +141,8 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
             raise Exception("Texture has unsaved changes, please save first.")
         if texture.filepath == "":
             raise Exception("Texture not saved, cannot use for tiling.")
-        if texture.file_format != "PNG":
-            raise Exception("Only PNG textures are supported!")
+        if texture.file_format != "PNG" and texture.file_format != "TGA":
+            raise Exception("Only PNG and TGA textures are supported! TGA textures are converted to PNG on the fly.")
 
     generated_image = bpy.data.images.new(name, textures[0].size[0], textures[0].size[1], alpha=True, tiled=True)
     generated_image.tiles[0].label = textures[0].name
@@ -167,6 +168,9 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
                                 b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90\x77\x53\xde\x00\x00\x00\x0c\x49\x44\x41'
                                 b'\x54\x08\xd7\x63\xa8\xaf\xff\x0f\x00\x03\x7e\x01\xfe\x10\xb1\xfb\x65\x00\x00\x00'
                                 b'\x00\x49\x45\x4e\x44\xae\x42\x60\x82')
+        elif texture.file_format == "TGA":
+            im = Image.open(bpy.path.abspath(texture.filepath))
+            im.save(dest_path, "PNG")
         else:
             shutil.copy(bpy.path.abspath(texture.filepath), dest_path)
     generated_image.filepath = bpy.path.relpath(os.path.join(folder_path, f"{name}.1001.png"))
