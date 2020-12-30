@@ -25,7 +25,7 @@ def calc_pack_items(udims: List[bpy.types.Image]):
         files[udim.name] = {}
         filepath = bpy.path.abspath(udim.filepath)
         dirpath, filename = os.path.split(filepath)
-        filename_match = re.match(r"(\w+)\.\d+.(\w+)", filename)
+        filename_match = re.match(r"([\w\.]+)\.\d+\.(\w+)", filename)
         if not filename_match:
             raise NotifyUserException(
                 f"'{udim.filepath}' could not be used to generate a pattern, files must be in the form of 'foo.1001.png'")
@@ -52,7 +52,4 @@ def pack_udim_btree(pack_calc: PackCalculation, target_abspath: str):
             if file.width != item.w or file.height != item.h:
                 file = file.resize((item.w, item.h))
             output_image.paste(file, (item.fit.x, item.fit.y))
-        if len(pack_calc.udims) == 1:
-            output_image.save(target_abspath)
-        else:
-            output_image.save(os.path.join(target_abspath, f"{udim.name}.png"))
+        output_image.save(os.path.join(target_abspath, f"{udim.name}.png"))
