@@ -18,7 +18,7 @@ def get_texture_from_normal_node(node: bpy.types.ShaderNodeNormalMap):
         raise Exception("Normal map node has a UV map set, which would break when atlasing without extra support.")
     color_input = node.inputs[1]
     if not color_input.is_linked:
-        raise Exception("Color input of normal map node isn't linked anywhere.")
+        return None
     return get_texture_from_image_node(color_input.links[0].from_socket.node)
 
 
