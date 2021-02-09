@@ -29,6 +29,15 @@ def get_texture_from_image_node(node: bpy.types.ShaderNodeTexImage):
     return node.image
 
 
+def get_texture_from_bw_node(node: bpy.types.ShaderNodeRGBToBW):
+    if type(node) is not bpy.types.ShaderNodeRGBToBW:
+        raise Exception("Node is not an RGB to BW node.")
+    color_input = node.inputs[0]
+    if not color_input.is_linked:
+        raise Exception("RGB to BW node is not linked")
+    return get_texture_from_image_node(color_input.links[0].from_socket.node)
+
+
 def get_texture_set_for_material(mat: bpy.types.Material):
     if not mat.use_nodes:
         raise Exception(f"Material '{mat.name}' doesn't use nodes - nodes are required.")
@@ -46,12 +55,15 @@ def get_texture_set_for_material(mat: bpy.types.Material):
     surface_node: bpy.types.Node = output_node.inputs[0].links[0].from_socket.node
     color_input = None
     normal_input = None
+    metallic_input = None
     for nodeInput in surface_node.inputs:
         if nodeInput.name == "Color" or nodeInput.name == "Base Color":
             color_input = nodeInput
         elif nodeInput.name == "Normal":
             normal_input = nodeInput
-        if color_input is not None and normal_input is not None:
+        elif nodeInput.name == "Metallic":
+            metallic_input = nodeInput
+        if color_input is not None and normal_input is not None and metallic_input is not None:
             break
     if color_input is None:
         raise Exception(f"Material '{mat.name}': Failed to find a (Base) Color input on the surface node.")
@@ -66,7 +78,27 @@ def get_texture_set_for_material(mat: bpy.types.Material):
     if normal_input is not None and normal_input.is_linked:
         normal_texture = get_texture_from_normal_node(normal_input.links[0].from_socket.node)
 
-    return SimpleMaterialDefinition.SimpleMaterialDefinition(color_texture, normal_texture)
+    metallic_texture = None
+    if metallic_input is not None and metallic_input.is_linked:
+        metallic_texture = get_texture_from_bw_node(metallic_input.links[0].from_socket.node)
+
+    return SimpleMaterialDefinition.SimpleMaterialDefinition(color_texture, normal_texture, metallic_texture)
+
+
+def collate_textures(tile_max_y, tile_max_x, tile_map, materials, directory, prefix):
+    output_diffuse = []
+    output_normal = []
+    output_metallic = []
+    for y in range(0, tile_max_y):
+        for x in range(0, tile_max_x):
+            if tile_map[x][y] is not None:
+                output_diffuse.append(materials[tile_map[x][y]].diffuseTexture)
+                output_normal.append(materials[tile_map[x][y]].normalTexture)
+                output_metallic.append(materials[tile_map[x][y]].metallicTexture)
+    return \
+        generate_udim_texture(f"{prefix}.Diffuse", directory, output_diffuse), \
+        generate_udim_texture(f"{prefix}.Normal", directory, output_normal), \
+        generate_udim_texture(f"{prefix}.Metallic", directory, output_metallic)
 
 
 def merge_textures_udim_style(materials: Dict[str, SimpleMaterialDefinition.SimpleMaterialDefinition],
@@ -111,22 +143,12 @@ def merge_textures_udim_style(materials: Dict[str, SimpleMaterialDefinition.Simp
                 mesh.uv_layers[0].data[loop_index].uv[1] = loop_uv[1] + tile_map_lookup[polygon_material_name][1]
 
     # Generate two UDIM textures
-    diffuse_textures = []
-    for y in range(0, tile_max_y):
-        for x in range(0, tile_max_x):
-            if tile_map[x][y] is not None:
-                diffuse_textures.append(materials[tile_map[x][y]].diffuseTexture)
-    diffuse_texture = generate_udim_texture(f"{fileprefix}.Diffuse", directory, diffuse_textures)
-    normal_textures = []
-    for y in range(0, tile_max_y):
-        for x in range(0, tile_max_x):
-            if tile_map[x][y] is not None:
-                normal_textures.append(materials[tile_map[x][y]].normalTexture)
-    normal_texture = generate_udim_texture(f"{fileprefix}.Normal", directory, normal_textures)
+    diffuse_texture, normal_texture, metallic_texture = \
+        collate_textures(tile_max_y, tile_max_x, tile_map, materials, directory, fileprefix)
     normal_texture.colorspace_settings.name = "Non-Color"
     normal_texture.colorspace_settings.is_data = True
 
-    return diffuse_texture, normal_texture
+    return diffuse_texture, normal_texture, metallic_texture
 
 
 def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image]):
@@ -187,12 +209,14 @@ def main(target_materials: List[bpy.types.Material], directory: str, fileprefix:
     for mat in target_materials:
         material_definitions[mat.name] = get_texture_set_for_material(mat)
 
-    diffuse_udim_texture, normal_udim_texture = merge_textures_udim_style(material_definitions, bpy.data.meshes,
+    diffuse_udim_texture, normal_udim_texture, metallic_udim_texture = merge_textures_udim_style(material_definitions, bpy.data.meshes,
                                                                           fileprefix, directory)
     for mat in material_definitions.values():
         mat.diffuseTexture.user_remap(diffuse_udim_texture)
         if mat.normalTexture is not None:
             mat.normalTexture.user_remap(normal_udim_texture)
+        if mat.metallicTexture is not None:
+            mat.metallicTexture.user_remap(metallic_udim_texture)
 
 
 class AtlasOperator(bpy.types.Operator):
