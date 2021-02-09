@@ -56,7 +56,10 @@ class AtlasUdimMaterialsOperator(bpy.types.Operator):
         for mat in materials:
             texture_set = get_texture_set_for_material(mat)
             if texture_set.normalTexture is not None:
-                calculated = calc_pack_items([texture_set.normalTexture, texture_set.diffuseTexture])
+                if texture_set.metallicTexture is not None:
+                    calculated = calc_pack_items([texture_set.normalTexture, texture_set.diffuseTexture, texture_set.metallicTexture])
+                else:
+                    calculated = calc_pack_items([texture_set.normalTexture, texture_set.diffuseTexture])
             else:
                 calculated = calc_pack_items([texture_set.diffuseTexture])
             material_calculations[mat.name] = calculated

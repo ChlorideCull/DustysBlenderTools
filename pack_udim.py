@@ -25,14 +25,17 @@ def calc_pack_items(udims: List[bpy.types.Image]):
         files[udim.name] = {}
         filepath = bpy.path.abspath(udim.filepath)
         dirpath, filename = os.path.split(filepath)
-        filename_match = re.match(r"([\w\.]+)\.\d+\.(\w+)", filename)
+        filename_match = re.match(r"([\w.\-_]+)\.\d+\.(\w+)", filename)
         if not filename_match:
             raise NotifyUserException(
                 f"'{udim.filepath}' could not be used to generate a pattern, files must be in the form of 'foo.1001.png'")
 
         for tile in udim.tiles:
             tile_filename = os.path.join(dirpath, f"{filename_match.group(1)}.{tile.number}.{filename_match.group(2)}")
-            tile_image: Image.Image = Image.open(tile_filename)
+            try:
+                tile_image: Image.Image = Image.open(tile_filename)
+            except FileNotFoundError:
+                tile_image: Image.Image = Image.new("RGBA", (1, 1))
             files[udim.name][f"{tile.number}"] = tile_image
             if first_udim:
                 items_to_pack.append(NodePackerItem(f"{tile.number}", tile_image.width, tile_image.height))
