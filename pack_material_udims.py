@@ -55,7 +55,10 @@ class AtlasUdimMaterialsOperator(bpy.types.Operator):
         replacement_images = {}
         for mat in materials:
             texture_set = get_texture_set_for_material(mat)
-            calculated = calc_pack_items([texture_set.normalTexture, texture_set.diffuseTexture])
+            if texture_set.normalTexture is not None:
+                calculated = calc_pack_items([texture_set.normalTexture, texture_set.diffuseTexture])
+            else:
+                calculated = calc_pack_items([texture_set.diffuseTexture])
             material_calculations[mat.name] = calculated
             pack_udim_btree(calculated, self.directory)
             for texture in calculated.udims:

@@ -6,6 +6,7 @@ import os
 import logging
 import re
 from . import SimpleMaterialDefinition
+from PIL import Image
 
 
 log = logging.getLogger("DustyAtlas")
@@ -18,7 +19,7 @@ def get_texture_from_normal_node(node: bpy.types.ShaderNodeNormalMap):
         raise Exception("Normal map node has a UV map set, which would break when atlasing without extra support.")
     color_input = node.inputs[1]
     if not color_input.is_linked:
-        raise Exception("Color input of normal map node isn't linked anywhere.")
+        return None
     return get_texture_from_image_node(color_input.links[0].from_socket.node)
 
 
@@ -132,7 +133,13 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
     if len(textures) == 1:
         raise Exception("No point in creating UDIMs with a single image, is there?")
     if textures[0] is None:
-        raise Exception("I'm lazy and haven't bothered implementing support for the first texture being missing. Create some normal maps or something.")
+        texture_size_x = 1
+        texture_size_y = 1
+        texture_name = "1001"
+    else:
+        texture_size_x = textures[0].size[0]
+        texture_size_y = textures[0].size[1]
+        texture_name = textures[0].name
     for texture in textures:
         if texture is None:
             continue
@@ -140,13 +147,11 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
             raise Exception("Texture has unsaved changes, please save first.")
         if texture.filepath == "":
             raise Exception("Texture not saved, cannot use for tiling.")
-        if texture.file_format != "PNG":
-            raise Exception("Only PNG textures are supported!")
 
-    generated_image = bpy.data.images.new(name, textures[0].size[0], textures[0].size[1], alpha=True, tiled=True)
-    generated_image.tiles[0].label = textures[0].name
+    generated_image = bpy.data.images.new(name, texture_size_x, texture_size_y, alpha=True, tiled=True)
+    generated_image.tiles[0].label = texture_name
     for tile_id in range(1, len(textures)):
-        tile_label = tile_id
+        tile_label = str(tile_id)
         if textures[tile_id] is not None:
             tile_label = textures[tile_id].name
         generated_image.tiles.new(1001 + tile_id, label=tile_label)
@@ -167,8 +172,11 @@ def generate_udim_texture(name: str, path: str, textures: List[bpy.types.Image])
                                 b'\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90\x77\x53\xde\x00\x00\x00\x0c\x49\x44\x41'
                                 b'\x54\x08\xd7\x63\xa8\xaf\xff\x0f\x00\x03\x7e\x01\xfe\x10\xb1\xfb\x65\x00\x00\x00'
                                 b'\x00\x49\x45\x4e\x44\xae\x42\x60\x82')
-        else:
+        elif texture.file_format == "PNG":
             shutil.copy(bpy.path.abspath(texture.filepath), dest_path)
+        else:
+            im = Image.open(bpy.path.abspath(texture.filepath))
+            im.save(dest_path, "PNG")
     generated_image.filepath = bpy.path.relpath(os.path.join(folder_path, f"{name}.1001.png"))
     generated_image.reload()
     return generated_image
@@ -183,7 +191,8 @@ def main(target_materials: List[bpy.types.Material], directory: str, fileprefix:
                                                                           fileprefix, directory)
     for mat in material_definitions.values():
         mat.diffuseTexture.user_remap(diffuse_udim_texture)
-        mat.normalTexture.user_remap(normal_udim_texture)
+        if mat.normalTexture is not None:
+            mat.normalTexture.user_remap(normal_udim_texture)
 
 
 class AtlasOperator(bpy.types.Operator):
